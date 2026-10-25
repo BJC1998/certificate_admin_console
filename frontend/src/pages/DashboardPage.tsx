@@ -12,7 +12,7 @@ export function DashboardPage() {
         <p>Browse certificates by tenant, search learner records, and review certificate status.</p>
         <div className="feature-grid">
           <a className="feature" href="#certificates"><span className="tag">AVAILABLE</span><h3>Certificates <span aria-hidden="true">↗</span></h3><p>Search and review certificates in your tenant workspace.</p></a>
-          <a className="feature" href="#bulk-issue"><span className="tag">PLANNED</span><h3>Bulk Issue <span aria-hidden="true">↗</span></h3><p>A workspace for issuing course certificates in a batch.</p></a>
+          <a className="feature" href="#bulk-issue"><span className="tag">AVAILABLE</span><h3>Bulk Issue <span aria-hidden="true">↗</span></h3><p>Issue course certificates with safe retries and individual outcomes.</p></a>
         </div>
       </section>
     </>

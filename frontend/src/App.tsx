@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { DashboardPage } from './pages/DashboardPage'
-import { PlaceholderPage } from './pages/PlaceholderPage'
 import { CertificatesPage } from './pages/CertificatesPage'
+import { BulkIssuePage } from './pages/BulkIssuePage'
 
 const navigation = [
   { id: 'dashboard', label: 'Dashboard', icon: '◫' },
@@ -16,6 +16,7 @@ function currentPage() {
 
 export default function App() {
   const [page, setPage] = useState(currentPage)
+  const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null)
   useEffect(() => {
     const onHashChange = () => setPage(currentPage())
     window.addEventListener('hashchange', onHashChange)
@@ -41,7 +42,9 @@ export default function App() {
       <div className="main-shell">
         <div className="topbar"><span>Certificate Admin Console</span><span className="environment-label">DEVELOPMENT</span></div>
         <main id="main" tabIndex={-1}>
-          {page === 'dashboard' ? <DashboardPage /> : page === 'certificates' ? <CertificatesPage /> : <PlaceholderPage title="Bulk Issue" />}
+          {page === 'dashboard' ? <DashboardPage /> : page === 'certificates'
+            ? <CertificatesPage initialTenantId={selectedTenantId} onTenantChange={setSelectedTenantId} />
+            : <BulkIssuePage initialTenantId={selectedTenantId} onTenantChange={setSelectedTenantId} />}
         </main>
         <footer className="app-footer">Ocean AI Labs · Certificate administration</footer>
       </div>

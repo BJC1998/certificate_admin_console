@@ -1,1 +1,1 @@
-"""Reserved for business services in subsequent approved steps."""
+"""Tenant-scoped listing and atomic certificate issuance services."""

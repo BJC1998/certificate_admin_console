@@ -5,11 +5,13 @@ import { CertificateTable } from '../components/CertificateTable'
 import { useCertificates } from '../hooks/useCertificates'
 import type { CertificateQuery, LoadState, SortField, TenantOption } from '../types/certificates'
 
-export function CertificatesPage() {
+export function CertificatesPage({ initialTenantId = null, onTenantChange }: {
+  initialTenantId?: number | null; onTenantChange?: (id: number | null) => void
+}) {
   const [tenants, setTenants] = useState<LoadState<TenantOption[]>>({ status: 'loading' })
   const [tenantAttempt, setTenantAttempt] = useState(0)
   const [draft, setDraft] = useState('')
-  const [query, setQuery] = useState<CertificateQuery>({ tenantId: null, search: '', page: 1, pageSize: 10, sortBy: 'issued_at', sortOrder: 'desc' })
+  const [query, setQuery] = useState<CertificateQuery>({ tenantId: initialTenantId, search: '', page: 1, pageSize: 10, sortBy: 'issued_at', sortOrder: 'desc' })
   const { state, retry } = useCertificates(query)
 
   useEffect(() => {
@@ -20,7 +22,9 @@ export function CertificatesPage() {
     getTenants(controller.signal).then((data) => {
       if (active) {
         setTenants({ status: 'success', data })
-        setQuery((previous) => ({ ...previous, tenantId: data.some((item) => item.id === previous.tenantId) ? previous.tenantId : data[0]?.id ?? null, page: 1 }))
+        const selected = data.some((item) => item.id === initialTenantId) ? initialTenantId : data[0]?.id ?? null
+        setQuery((previous) => ({ ...previous, tenantId: selected, page: 1 }))
+        onTenantChange?.(selected)
       }
     }).catch((error: unknown) => {
       if (active) setTenants({ status: 'error', message: controller.signal.aborted ? 'The tenant request timed out.'
@@ -49,7 +53,7 @@ export function CertificatesPage() {
         <div><p className="eyebrow">CERTIFICATE WORKSPACE</p><h1>Certificates</h1><p>Review course completion records for your selected tenant.</p></div>
         <div className="tenant-control"><label htmlFor="tenant">Tenant</label>
           <select id="tenant" value={query.tenantId ?? ''} disabled={tenants.status !== 'success' || !tenants.data.length}
-            onChange={(event) => setQuery((previous) => ({ ...previous, tenantId: Number(event.target.value), page: 1 }))}>
+            onChange={(event) => { const selected = Number(event.target.value); setQuery((previous) => ({ ...previous, tenantId: selected, page: 1 })); onTenantChange?.(selected) }}>
             {tenants.status === 'success' && tenants.data.length
               ? tenants.data.map((tenant) => <option key={tenant.id} value={tenant.id}>{tenant.name}</option>)
               : <option value="">{tenants.status === 'loading' ? 'Loading tenants…' : 'No tenant available'}</option>}

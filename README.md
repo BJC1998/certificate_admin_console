@@ -1,6 +1,6 @@
 # Certificate Admin Console
 
-Steps 1–3: FastAPI health endpoint, React/TypeScript/Vite dashboard, SQLAlchemy/SQLite schema, tenant-scoped certificate listing and repeatable demo data. The Certificates page supports tenant selection, search, sorting and pagination. Bulk issuance, details, revocation and export are not implemented yet.
+Steps 1–4: FastAPI health endpoint, React/TypeScript/Vite dashboard, SQLAlchemy/SQLite schema, tenant-scoped certificate listing, reliable bulk issuance and repeatable demo data. Certificates supports search/sort/pagination; Bulk Issue supports course selection, individual outcomes and safe retries. Details, revocation and export are not implemented yet.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ Run each command from the repository root in a separate terminal:
 npm.cmd --prefix frontend run dev
 ```
 
-Open http://127.0.0.1:5173. The dashboard requests http://127.0.0.1:8000/health directly and displays checking, connected or error status, with a manual recheck button. Navigation includes the Certificates register and a Bulk Issue placeholder. Use Ctrl+C in each terminal to stop.
+Open http://127.0.0.1:5173. The dashboard requests http://127.0.0.1:8000/health directly and displays checking, connected or error status, with a manual recheck button. Navigation includes the Certificates register and Bulk Issue page. Use Ctrl+C in each terminal to stop.
 
 Health contract: `GET /health` returns HTTP 200 and `{"status":"ok"}`. This checks application liveness only, not database connectivity. API documentation: http://127.0.0.1:8000/docs.
 
@@ -43,7 +43,7 @@ Health contract: `GET /health` returns HTTP 200 and `{"status":"ok"}`. This chec
 Backend variables are read from the process environment; backend `.env` files are not loaded automatically:
 
 - `DATABASE_URL`: defaults to an absolute path to `backend/certificate_admin.db`, independent of the terminal's working directory. Only SQLite URLs are supported. The engine is lazy; startup does not create a database or any tables.
-- `CORS_ORIGINS`: comma-separated origins, default `http://localhost:5173,http://127.0.0.1:5173`. Only GET is currently allowed; future steps must extend methods alongside new endpoints.
+- `CORS_ORIGINS`: comma-separated origins, default `http://localhost:5173,http://127.0.0.1:5173`. GET and POST are allowed, including the `X-Tenant-ID` selector header; future endpoints must extend methods as needed.
 
 Frontend: copy `frontend/.env.example` to `frontend/.env.local` to customize `VITE_API_BASE_URL`. Vite loads frontend environment files; restart the dev server after changes. The dev server uses a strict port so it cannot silently move away from the allowed CORS origins.
 
@@ -217,4 +217,58 @@ Verification completed:
 - A read-only request to the existing production backend on port 8000 returned 200, 54 Sydney records total, ten records on page 1 and the expected CORS origin.
 - Backend imports/compilation and `pip check` passed. TypeScript checking and Vite production build passed. Run the Checks commands above to reproduce the automated checks.
 
-Limitations: demo selection is not access authentication; SQLite's default case-insensitive substring behavior handles ASCII case folding, not full Unicode case folding. Offset pagination is intended for this assessment and is not a snapshot across concurrent data changes. Bulk issuance, details, revocation and export remain deferred. No Git commits were created.
+At Step 3 completion, bulk issuance, details, revocation and export were deferred. Demo selection is not access authentication; SQLite's default case-insensitive substring behavior handles ASCII case folding, not full Unicode case folding. Offset pagination is not a snapshot across concurrent data changes. No Git commits were created.
+
+## Step 4: bulk issuance API and transactions
+
+- `GET /api/tenants/{tenant_id}/courses` returns `[{id, tenant_id, title}, ...]`, scoped to the selected tenant and sorted by title/id.
+- `POST /api/tenants/{tenant_id}/courses/{course_id}/issue` accepts no body or `{}`. Extra body fields (including tenant_id and actor) return 422. An inaccessible course or a conflicting path/header tenant returns 404 before processing.
+- A successful HTTP response is 200 even when some learner operations failed: inspect `issued`, `skipped`, `failed` and the individual `results`. Response also contains `tenant_id`, `course_id`, `total`. Each result contains `learner_id`, `learner_name`, `outcome`, `reason`, nullable `certificate_id` and `serial_number`.
+- Outcomes cover every enrollment in the course, including incomplete learners as skipped. Within each learner transaction the current enrollment is checked again; only completed enrollments can receive a new certificate. Existing valid and revoked certificates are returned as skipped and remain unchanged.
+
+Transaction sequence: validate tenant/course, materialize the tenant-scoped enrollment/learner snapshot, end that read transaction, then process each learner in an independent `session.begin()` transaction. Flush the certificate first, flush its issuance audit second, commit, then report issued. A failure in audit insertion rolls back that learner's certificate too; it does not affect committed learners. Transactions, not savepoints nested inside one batch transaction, provide the isolation between learner outcomes here.
+
+The existing unique constraints on certificate identity, serial and certificate audit action are the final race protection. Check-before-insert is only an optimization. Following an IntegrityError, the transaction is rolled back and a new tenant-scoped read checks for a winning certificate: only an exact tenant/course/learner match can become skipped. Other integrity failures return failed rather than a false success. Serials use UUID4 values prefixed with `OCEAN-`; the global serial unique constraint is still enforced.
+
+SQLite BUSY/LOCKED errors roll back and retry that learner in a new transaction, at most four attempts, with 25/50/100 ms backoffs in addition to SQLite's connection busy timeout. Persistent contention returns `database_busy_retry_safe`; other database failures return safe reason codes without SQL exception contents. The client can repeat the whole course operation to retry remaining learners.
+
+Reason codes: `certificate_and_audit_committed`, `already_issued`, `previously_revoked`, `enrollment_incomplete`, `enrollment_no_longer_available`, `database_busy_retry_safe`, `database_error_retry_safe`, `database_integrity_error_retry_safe`.
+
+Audit actor is assigned by the server as `demo-admin-{tenant_id}`. It represents demo context, not an authenticated administrator. No schema migration or new dependencies are needed for Step 4.
+
+Example commands (these intentionally issue certificates in the configured database):
+
+```powershell
+Invoke-RestMethod 'http://127.0.0.1:8000/api/tenants/1/courses'
+Invoke-RestMethod -Method Post 'http://127.0.0.1:8000/api/tenants/1/courses/1/issue'
+# Safe repeat: previously committed certificates are skipped.
+Invoke-RestMethod -Method Post 'http://127.0.0.1:8000/api/tenants/1/courses/1/issue'
+```
+
+## Step 4: frontend and verification
+
+Open `http://127.0.0.1:5173/#bulk-issue`, select tenant/course and click Bulk Issue. A synchronous submission guard and disabled controls prevent duplicate clicks in flight. Processing text shows no invented percentage. Completion displays summary counts and per-learner reasons, refreshes the selected tenant's certificate register, and preserves tenant selection when opening Certificates. Failed learner outcomes offer Retry safely. An unconfirmed response explains that the server may already have committed some/all work and offers Safe retry. The browser has a 60-second issuance response timeout and a separate ten-second register-refresh timeout; leaving the page does not undo committed work.
+
+Real automated verification uses separate temporary file-backed SQLite databases, independent connections and actual FastAPI HTTP requests. Run from the repository root:
+
+```powershell
+.\backend\.venv\Scripts\python.exe -m unittest discover -s backend/tests -p test_bulk_issuance.py -v
+.\backend\.venv\Scripts\python.exe -m unittest discover -s backend/tests -v
+.\backend\.venv\Scripts\python.exe -m compileall -q backend/app backend/tests
+.\backend\.venv\Scripts\python.exe -m pip check
+npm.cmd --prefix frontend run build
+```
+
+Verified results:
+
+- **50 backend tests passed**, including nine new bulk-issuance tests and all 41 previous regressions. Backend compilation and dependency checks passed; TypeScript/Vite build passed.
+- Fresh seeded course: first request issued 6 / skipped 24 / failed 0; repeat issued 0 / skipped 30 / failed 0. The final database had 24 course certificates and exactly 24 issuance audits. Three revoked certificates and six incomplete learners were skipped.
+- Two simultaneous HTTP requests used a barrier to force both to observe no certificate for the same new learner before inserting. Combined issuance was exactly six, final certificates/audits were 24/24, and the actual SQLite `SQLITE_CONSTRAINT_UNIQUE` code 2067 was observed. There is no application mutex serializing these requests.
+- Dropping the entire response after the endpoint completed its commits left 24 certificates/audits. Retry issued zero and preserved 24/24.
+- Injected audit failure: five learners committed, one certificate and its audit rolled back; retry issued only that missing one. A forced serial collision was reported failed rather than falsely skipped.
+- A real held SQLite writer lock produced retryable failed outcomes without partial certificate/audit writes; retry after releasing the lock issued the six eligible certificates.
+- Another tenant's course was denied; client ownership/actor injection was rejected. Empty courses and POST CORS preflight passed.
+- Browser verification on temporary ports 5174/8001 used a separate seeded database, leaving the user's database untouched. During a delayed response the issue button and selectors were disabled; a second click was blocked and the server received only one POST. Result summary showed 6 issued / 24 skipped / 0 failed, individual outcomes were displayed and the register refreshed to 60 tenant records.
+- The browser also received a simulated 503 replacing a successful committed response. It displayed the uncertain-outcome warning and Safe retry; retry showed 0 issued / 30 skipped / 0 failed and the refreshed register contained 66 Sydney records. Switching to Perth cleared the prior results and loaded only Perth courses. Issuing there showed 6/24/0, refreshed Perth to 60 records, and View certificates retained Perth and displayed those new records.
+
+Limitations: issuance is synchronous and outcomes are returned at the end, not streamed. A process interruption can leave a partially completed batch; repeating it safely skips durable successes. There is no persistent operation/request ID or exact response replay, so a retry's counts describe that retry and can differ from the original. SQLite is a single-writer database; persistent lock contention can require another user retry, and a response timeout does not cancel server work. There are no emails, job queues, authenticated actor identity, details, revocation or export in Step 4. No Git commits were created.

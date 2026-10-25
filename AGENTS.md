@@ -23,6 +23,7 @@
 - No certificate models, tables, tenant data or business endpoints in Step 1.
 - Step 2 adds the schema, seed and tenant boundary only; no list/issuance/revocation/export endpoints.
 - Step 3 adds read-only tenant metadata and certificate listing. No issuance/detail/revocation/export endpoints yet.
+- Step 4 adds tenant-scoped course selection and synchronous bulk issuance. No details/revocation/export endpoints, emails or job queues.
 
 ## Engineering rules
 - Enforce tenant isolation on the backend for every tenant-owned database query and mutation; frontend filtering is insufficient. Requests must use `get_session` and `TenantSession` with a fixed tenant context. Use `get_tenant_record` for 404 on missing or inaccessible records.
@@ -37,7 +38,12 @@
 - Composite foreign keys enforce shared tenant/course/learner ownership. Do not replace them with separate id-only references.
 - Relationships are read-only and use `lazy="raise"`; load them explicitly (e.g. `selectinload`) and write scalar FK fields. Flush new parents before referring to generated ids.
 - Certificates and audit history cannot be deleted through request sessions; certificate identity and ownership are immutable; audit entries are append-only.
-- `completed` is the only eligible enrollment status (`Enrollment.is_eligible`). Issuance services must enforce it in the later issuance step.
+- `completed` is the only eligible enrollment status (`Enrollment.is_eligible`). Recheck it inside each learner's issuance transaction.
+- Bulk issuance uses independent learner transactions: certificate and issuance audit flush/commit atomically. Do not wrap the batch in a transaction that could roll back already-successful learners.
+- Database uniqueness remains the final concurrency authority. After an IntegrityError rollback, report skipped only if the exact tenant/course/learner certificate exists; unrelated conflicts must remain failed.
+- Retry SQLite BUSY/LOCKED at most four times with a new learner transaction each time. Never auto-reactivate or replace revoked certificates.
+- There is no persistent request ID or result replay contract: retries report committed certificates as skipped. Audit actor is server-assigned `demo-admin-{tenant_id}`, explicitly not an authenticated identity.
+- Frontend must synchronously guard submission, disable controls in flight, show honest processing text, and explain that an unconfirmed response may follow committed work. Safe retry repeats the same selected course operation.
 - Store timestamps in UTC. Use IANA timezone identifiers for tenant-local dates; never fixed UTC offsets.
 - A tenant/course/learner combination may receive at most one certificate, including after revocation.
 - Use database transactions and unique constraints to prevent duplicate issuance and audit entries.
