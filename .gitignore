@@ -1,0 +1,28 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+# Local data and configuration
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+*.sqlite*
+# Frontend
+node_modules/
+dist/
+*.tsbuildinfo
+# Editor, OS and temporary files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+~$*
+tmp/
+*.log
+playwright-report/
+test-results/
