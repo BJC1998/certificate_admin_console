@@ -1,13 +1,38 @@
 import { API_BASE_URL } from './health'
-import type { CertificatePage, CertificateQuery, TenantOption } from '../types/certificates'
+import type { CertificateDetail, CertificatePage, CertificateQuery, RevokeResponse, TenantOption } from '../types/certificates'
 
-async function request(path: string, signal: AbortSignal, tenantId?: number): Promise<unknown> {
+async function request(path: string, signal: AbortSignal, tenantId?: number, method: 'GET' | 'POST' = 'GET'): Promise<unknown> {
   const response = await fetch(`${API_BASE_URL}${path}`, {
-    signal,
+    signal, method,
     headers: tenantId === undefined ? undefined : { 'X-Tenant-ID': String(tenantId) },
   })
   if (!response.ok) throw new Error(`The API returned HTTP ${response.status}. Please try again.`)
   return response.json()
+}
+
+function validateDetail(data: CertificateDetail, tenantId: number, certificateId: number): CertificateDetail {
+  if (!data || data.tenant_id !== tenantId || data.id !== certificateId
+      || !Number.isInteger(data.course_id) || !Number.isInteger(data.learner_id)
+      || typeof data.learner_name !== 'string' || typeof data.course_title !== 'string'
+      || typeof data.tenant_name !== 'string' || typeof data.tenant_timezone !== 'string'
+      || typeof data.serial_number !== 'string' || typeof data.issued_at !== 'string'
+      || !Number.isFinite(Date.parse(data.issued_at)) || !['valid', 'revoked'].includes(data.status)) {
+    throw new Error('The API returned an invalid certificate detail response.')
+  }
+  return data
+}
+
+export async function getCertificate(tenantId: number, certificateId: number, signal: AbortSignal): Promise<CertificateDetail> {
+  const data = await request(`/api/tenants/${tenantId}/certificates/${certificateId}`, signal, tenantId) as CertificateDetail
+  return validateDetail(data, tenantId, certificateId)
+}
+
+export async function revokeCertificate(tenantId: number, certificateId: number, signal: AbortSignal): Promise<RevokeResponse> {
+  const data = await request(`/api/tenants/${tenantId}/certificates/${certificateId}/revoke`, signal, tenantId, 'POST') as RevokeResponse
+  if (!data || typeof data.changed !== 'boolean') throw new Error('The revocation response could not be confirmed.')
+  validateDetail(data.certificate, tenantId, certificateId)
+  if (data.certificate.status !== 'revoked') throw new Error('The revocation response could not be confirmed.')
+  return data
 }
 
 export async function getTenants(signal: AbortSignal): Promise<TenantOption[]> {

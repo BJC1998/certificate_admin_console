@@ -25,7 +25,7 @@ export function CertificateTable({ data, sortBy, sortOrder, onSort }: {
         <tbody>{data.records.map((row) => (
           <tr key={row.id}>
             <td className="learner-cell">{row.learner_name}</td><td>{row.course_title}</td>
-            <td className="serial-cell">{row.serial_number}</td>
+            <td className="serial-cell"><a className="certificate-detail-link" href={`#certificates/${row.tenant_id}/${row.id}`} aria-label={`View certificate ${row.serial_number}`}>{row.serial_number}</a></td>
             <td><time dateTime={row.issued_at} title={`${row.issued_at} · ${data.tenant_timezone}`}>{dateFormat.format(new Date(row.issued_at))}</time></td>
             <td><span className={`certificate-status ${row.status}`}>{row.status === 'valid' ? 'Valid' : 'Revoked'}</span></td>
           </tr>

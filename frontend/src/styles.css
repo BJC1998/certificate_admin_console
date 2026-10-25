@@ -123,3 +123,20 @@ select, input { border: 1px solid #cbd9e1; border-radius: 6px; background: #fff;
 .certificate-status.failed { color: #9c3b30; background: #fcece7; }
 .certificate-table thead th { height: 46px; }
 @media (max-width: 580px) { .bulk-controls > div { min-width: 100%; } .bulk-controls > button { width: 100%; } .issue-summary { gap: 8px; margin-inline: 18px; } .issue-summary > div { padding: 13px; } }
+.certificate-detail-link { color: #17666e; text-underline-offset: 3px; }
+.detail-back { display: inline-block; margin-bottom: 24px; }
+.detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; margin: 24px 0 0; }
+.detail-grid dt { color: #657d8c; font-size: 12px; margin-bottom: 9px; }
+.detail-grid dd { margin: 0; font-size: 14px; line-height: 1.7; overflow-wrap: anywhere; }
+.detail-grid small { display: block; font-size: 11px; color: #657d8c; margin-top: 7px; }
+.detail-serial { font-family: Consolas, monospace; }
+.revoke-section { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 20px; }
+.revoke-section p { max-width: 540px; margin-bottom: 0; }
+.danger-button { background: #a84035; color: #fff; border-color: #a84035; }
+.danger-button:hover:enabled { background: #8e3127; }
+.success-notice { padding: 16px 20px; background: #e9f5ee; color: #246b4b; border: 1px solid #c6e2d1; border-radius: 8px; }
+.revoke-dialog { width: min(500px, calc(100% - 36px)); border: 1px solid #dce5eb; border-radius: 12px; padding: 28px; color: #1b3343; box-shadow: 0 20px 80px #142b3b30; }
+.revoke-dialog::backdrop { background: #142b3b80; }
+.revoke-dialog strong { overflow-wrap: anywhere; }
+.dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
+@media (max-width: 650px) { .detail-grid { grid-template-columns: 1fr; } }

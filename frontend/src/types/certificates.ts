@@ -27,4 +27,11 @@ export interface CertificatePage {
   tenant_id: number
   tenant_timezone: string
 }
+export interface CertificateDetail extends CertificateRecord {
+  learner_id: number
+  course_id: number
+  tenant_name: string
+  tenant_timezone: string
+}
+export interface RevokeResponse { certificate: CertificateDetail; changed: boolean }
 export type LoadState<T> = { status: 'loading' } | { status: 'error'; message: string } | { status: 'success'; data: T }

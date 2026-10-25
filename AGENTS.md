@@ -24,6 +24,7 @@
 - Step 2 adds the schema, seed and tenant boundary only; no list/issuance/revocation/export endpoints.
 - Step 3 adds read-only tenant metadata and certificate listing. No issuance/detail/revocation/export endpoints yet.
 - Step 4 adds tenant-scoped course selection and synchronous bulk issuance. No details/revocation/export endpoints, emails or job queues.
+- Step 5 adds tenant-scoped details and atomic revocation. Export remains deferred.
 
 ## Engineering rules
 - Enforce tenant isolation on the backend for every tenant-owned database query and mutation; frontend filtering is insufficient. Requests must use `get_session` and `TenantSession` with a fixed tenant context. Use `get_tenant_record` for 404 on missing or inaccessible records.
@@ -48,6 +49,8 @@
 - A tenant/course/learner combination may receive at most one certificate, including after revocation.
 - Use database transactions and unique constraints to prevent duplicate issuance and audit entries.
 - Use `revoke` for revocation; retain issued certificates and audit history.
+- Revocation changes only valid -> revoked and writes its audit in the same transaction. Repeated calls return `changed: false` without additional writes. A concurrent conflict is successful only after confirming both revoked state and the existing revoke audit.
+- Detail URLs are `#certificates/{tenant_id}/{certificate_id}`. Require explicit confirmation before POST; cancellation must send no mutation. Preserve readable revoked details and reload status after an uncertain mutation response.
 - Avoid Redis, Kafka, Docker, microservices and unnecessary infrastructure.
 - Keep routers thin, validate API inputs, and use explicit types. Python uses snake_case; React components and types use PascalCase.
 - Keep configuration in environment variables; do not commit secrets, virtual environments, databases or dependency folders.

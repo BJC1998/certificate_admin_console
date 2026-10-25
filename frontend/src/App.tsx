@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { DashboardPage } from './pages/DashboardPage'
 import { CertificatesPage } from './pages/CertificatesPage'
 import { BulkIssuePage } from './pages/BulkIssuePage'
+import { CertificateDetailPage } from './pages/CertificateDetailPage'
 
 const navigation = [
   { id: 'dashboard', label: 'Dashboard', icon: '◫' },
@@ -11,12 +12,15 @@ const navigation = [
 
 function currentPage() {
   const page = window.location.hash.slice(1)
+  const detail = /^certificates\/([1-9]\d*)\/([1-9]\d*)$/.exec(page)
+  if (detail && Number.isSafeInteger(Number(detail[1])) && Number.isSafeInteger(Number(detail[2]))) return page
   return navigation.some((item) => item.id === page) ? page : 'dashboard'
 }
 
 export default function App() {
   const [page, setPage] = useState(currentPage)
   const [selectedTenantId, setSelectedTenantId] = useState<number | null>(null)
+  const detail = /^certificates\/(\d+)\/(\d+)$/.exec(page)
   useEffect(() => {
     const onHashChange = () => setPage(currentPage())
     window.addEventListener('hashchange', onHashChange)
@@ -33,7 +37,7 @@ export default function App() {
         <a href="#dashboard" className="brand"><span className="brand-mark" aria-hidden="true">O</span><span>OCEAN AI LABS<small>Certificate Admin Console</small></span></a>
         <p className="nav-label">WORKSPACE</p>
         <nav aria-label="Main navigation">{navigation.map((item) => (
-          <a key={item.id} href={`#${item.id}`} className={page === item.id ? 'nav-item active' : 'nav-item'} aria-current={page === item.id ? 'page' : undefined}>
+          <a key={item.id} href={`#${item.id}`} className={page === item.id || (detail && item.id === 'certificates') ? 'nav-item active' : 'nav-item'} aria-current={page === item.id || (detail && item.id === 'certificates') ? 'page' : undefined}>
             <span aria-hidden="true">{item.icon}</span>{item.label}
           </a>
         ))}</nav>
@@ -42,7 +46,8 @@ export default function App() {
       <div className="main-shell">
         <div className="topbar"><span>Certificate Admin Console</span><span className="environment-label">DEVELOPMENT</span></div>
         <main id="main" tabIndex={-1}>
-          {page === 'dashboard' ? <DashboardPage /> : page === 'certificates'
+          {detail ? <CertificateDetailPage key={`${detail[1]}:${detail[2]}`} tenantId={Number(detail[1])} certificateId={Number(detail[2])} onTenantChange={setSelectedTenantId} />
+            : page === 'dashboard' ? <DashboardPage /> : page === 'certificates'
             ? <CertificatesPage initialTenantId={selectedTenantId} onTenantChange={setSelectedTenantId} />
             : <BulkIssuePage initialTenantId={selectedTenantId} onTenantChange={setSelectedTenantId} />}
         </main>

@@ -1,6 +1,6 @@
 # Certificate Admin Console
 
-Steps 1–4: FastAPI health endpoint, React/TypeScript/Vite dashboard, SQLAlchemy/SQLite schema, tenant-scoped certificate listing, reliable bulk issuance and repeatable demo data. Certificates supports search/sort/pagination; Bulk Issue supports course selection, individual outcomes and safe retries. Details, revocation and export are not implemented yet.
+Steps 1–5: FastAPI health endpoint, React/TypeScript/Vite dashboard, SQLAlchemy/SQLite schema, tenant-scoped certificate listing/details, reliable bulk issuance/revocation and repeatable demo data. Certificate serial links open details with confirmed revocation; Bulk Issue supports individual outcomes and safe retries. CSV export is not implemented yet.
 
 ## Prerequisites
 
@@ -272,3 +272,36 @@ Verified results:
 - The browser also received a simulated 503 replacing a successful committed response. It displayed the uncertain-outcome warning and Safe retry; retry showed 0 issued / 30 skipped / 0 failed and the refreshed register contained 66 Sydney records. Switching to Perth cleared the prior results and loaded only Perth courses. Issuing there showed 6/24/0, refreshed Perth to 60 records, and View certificates retained Perth and displayed those new records.
 
 Limitations: issuance is synchronous and outcomes are returned at the end, not streamed. A process interruption can leave a partially completed batch; repeating it safely skips durable successes. There is no persistent operation/request ID or exact response replay, so a retry's counts describe that retry and can differ from the original. SQLite is a single-writer database; persistent lock contention can require another user retry, and a response timeout does not cancel server work. There are no emails, job queues, authenticated actor identity, details, revocation or export in Step 4. No Git commits were created.
+
+## Step 5: certificate details and revocation
+
+- `GET /api/tenants/{tenant_id}/certificates/{certificate_id}` returns the existing certificate record fields plus `learner_id`, `course_id`, `tenant_name`, `tenant_timezone`. The record includes `id`, `tenant_id`, `learner_name`, `course_title`, `serial_number`, tenant-local ISO `issued_at` with offset, and `status` (`valid` or `revoked`). All joins and lookups are scoped to the selected tenant. Stored UTC timestamps are untouched.
+- `POST /api/tenants/{tenant_id}/certificates/{certificate_id}/revoke` accepts no body or `{}` and returns `{certificate: <detail>, changed: true|false}`. First revocation returns true; repeated/already-revoked requests return false. Extra ownership/actor body fields return 422.
+- Missing and inaccessible records return the same generic 404. A conflicting optional `X-Tenant-ID` header also returns 404. Invalid certificate IDs return 422. Database errors that prevent confirmation return 503 with Retry-After; the client should reload status or retry safely.
+
+The revoke transaction loads the owned certificate, changes valid to revoked, inserts its revoke audit, flushes, builds the response, commits, then returns success. It never deletes or replaces a certificate, updates its serial/issue time, or changes the lifetime unique constraint. The unique `(tenant_id, certificate_id, action)` audit constraint handles simultaneous revokes: a losing transaction rolls back and returns unchanged only after checking the committed revoked state and its audit. SQLite BUSY/LOCKED retries use up to four fresh transactions. Other integrity failures are not reported as success. Existing revoked records are returned unchanged without rewriting history.
+
+In the Certificates table, click the serial link to open `#certificates/{tenant_id}/{certificate_id}`. Dates are explicitly rendered in the record's IANA timezone, with the ISO offset also visible. Only valid certificates show Revoke certificate. The native modal dialog identifies the serial and learner, initially focuses Cancel, and requires Confirm revocation to send the POST. Cancel/Escape before submission closes the dialog with no request. During submission, confirmation/cancellation controls are disabled to avoid duplicate requests. On success, the displayed status updates, the revoke action disappears, and the detail URL remains usable. After an unconfirmed mutation response, the page explains the possible committed result and offers Reload certificate; there is no optimistic revoked status before a confirmed response.
+
+Verification commands (repository root):
+
+```powershell
+.\backend\.venv\Scripts\python.exe -m unittest discover -s backend/tests -p test_certificate_details.py -v
+.\backend\.venv\Scripts\python.exe -m unittest discover -s backend/tests -v
+.\backend\.venv\Scripts\python.exe -m compileall -q backend/app backend/tests
+.\backend\.venv\Scripts\python.exe -m pip check
+npm.cmd --prefix frontend run build
+```
+
+Verified results:
+
+- **59 backend tests passed** (nine new detail/revoke tests plus all 50 earlier regressions); backend compilation, dependency checks, TypeScript checking and Vite production build passed.
+- Valid details and known Sydney +10/+11 and Perth +08 timestamps matched expected values. Invalid/missing/cross-tenant detail and revoke requests were rejected.
+- First revoke and repeat emitted exactly one certificate UPDATE and one UTC revoke audit, with unchanged id/serial/issue time and all 108 seeded certificates retained. An already-revoked seed record remained unchanged.
+- Concurrent HTTP revokes used separate connections and a barrier forcing both to read valid state before writing. The test observed real SQLite unique conflict code 2067; responses had exactly one `changed: true` and one `changed: false`, with one audit.
+- Injected revoke-audit failure returned 503 and left the certificate valid with no revoke audit. A subsequent retry succeeded. Discarding the response after a committed revocation was safe to repeat without duplicate audit entries.
+- Bulk issuance after revocation returned skipped/previously_revoked for that learner and retained the original certificate. No replacement or reactivation occurred.
+- Browser verification used temporary ports 5174/8001 and a separate demo database. Opening from the list displayed the correct learner/course/local issue date. Cancel sent no revoke POST; a direct database check confirmed valid status and zero revoke audits. Confirm updated the page to revoked, removed the action and preserved the original fields. A real repeated HTTP POST returned `changed: false`, and the isolated database still contained one revoke audit.
+- A simulated detail GET 503 showed explicit error/Retry; restoring the API and retrying displayed the revoked detail again. A cross-tenant detail URL showed 404 without exposing the record. The browser also displayed a loading state during a delayed GET.
+
+No schema migration or new dependencies were needed. Demo tenant selection and `demo-admin-{tenant_id}` remain unauthenticated context. The detail GET timeout is ten seconds; revoke response timeout is thirty seconds, and a timeout cannot undo committed server work. There is no restore/reactivation action or CSV export in Step 5. No candidate-only answers were modified and no Git commits were created.
