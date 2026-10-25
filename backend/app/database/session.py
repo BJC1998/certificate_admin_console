@@ -6,7 +6,7 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.orm import sessionmaker
 
-from app.core.tenant import TenantContext, get_tenant_context
+from app.core.tenant import TenantContext, get_path_tenant_context, get_tenant_context
 from app.database.engine import engine
 from app.database.tenant_session import TenantSession
 
@@ -17,5 +17,12 @@ def get_session(
     tenant: Annotated[TenantContext, Depends(get_tenant_context)],
 ) -> Generator[TenantSession, None, None]:
     """Resolve demo tenant context first. Services own explicit transactions."""
+    with SessionLocal(tenant_id=tenant.id) as session:
+        yield session
+
+
+def get_path_session(
+    tenant: Annotated[TenantContext, Depends(get_path_tenant_context)],
+) -> Generator[TenantSession, None, None]:
     with SessionLocal(tenant_id=tenant.id) as session:
         yield session

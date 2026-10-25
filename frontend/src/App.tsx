@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { DashboardPage } from './pages/DashboardPage'
 import { PlaceholderPage } from './pages/PlaceholderPage'
+import { CertificatesPage } from './pages/CertificatesPage'
 
 const navigation = [
   { id: 'dashboard', label: 'Dashboard', icon: '◫' },
@@ -35,12 +36,12 @@ export default function App() {
             <span aria-hidden="true">{item.icon}</span>{item.label}
           </a>
         ))}</nav>
-        <div className="sidebar-footer"><span className="environment-dot" /> Local development<small>Step 1 · Project foundation</small></div>
+        <div className="sidebar-footer"><span className="environment-dot" /> Local development<small>Demo certificate workspace</small></div>
       </aside>
       <div className="main-shell">
         <div className="topbar"><span>Certificate Admin Console</span><span className="environment-label">DEVELOPMENT</span></div>
         <main id="main" tabIndex={-1}>
-          {page === 'dashboard' ? <DashboardPage /> : <PlaceholderPage title={page === 'certificates' ? 'Certificates' : 'Bulk Issue'} />}
+          {page === 'dashboard' ? <DashboardPage /> : page === 'certificates' ? <CertificatesPage /> : <PlaceholderPage title="Bulk Issue" />}
         </main>
         <footer className="app-footer">Ocean AI Labs · Certificate administration</footer>
       </div>

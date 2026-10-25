@@ -22,10 +22,15 @@
 - Step 1 exposes only `GET /health` -> HTTP 200, `{"status":"ok"}`. This is application liveness, not database readiness.
 - No certificate models, tables, tenant data or business endpoints in Step 1.
 - Step 2 adds the schema, seed and tenant boundary only; no list/issuance/revocation/export endpoints.
+- Step 3 adds read-only tenant metadata and certificate listing. No issuance/detail/revocation/export endpoints yet.
 
 ## Engineering rules
 - Enforce tenant isolation on the backend for every tenant-owned database query and mutation; frontend filtering is insufficient. Requests must use `get_session` and `TenantSession` with a fixed tenant context. Use `get_tenant_record` for 404 on missing or inaccessible records.
 - `X-Tenant-ID` is a demo selector, not production authentication or authorization. Never claim that users cannot select another tenant. Production must derive tenant access from authenticated membership.
+- URL-scoped endpoints use `get_path_session`: the positive tenant path parameter selects context, and an optional `X-Tenant-ID` must match or return 404. Preserve the header-only `get_session` dependency for existing callers.
+- `GET /api/tenants` intentionally exposes root tenant metadata (id/name/timezone) for the demo dropdown; it must never expose cross-tenant business rows or counts.
+- Certificate listing uses only allowlisted sort fields, bounded pagination, literal substring search and an id tie-breaker. Return tenant-local ISO timestamps with explicit offsets; never change stored UTC values while reading.
+- Cancel obsolete frontend requests, guard callbacks after cleanup and hide data whose query key differs from the current selection. Preserve explicit loading, empty, error and retry states.
 - Never accept `tenant_id` from a request body; input schemas forbid extra fields. Session ownership comes from the resolved context.
 - Request sessions reject raw SQL, Core statements, `from_statement`, bulk DML and legacy bulk mapping APIs. Never bypass them via `session.connection()`, a plain Session or direct engine access in business routers/services.
 - Plain Sessions are restricted to explicit init/seed maintenance and database integrity tests. Owned seed lookups include `tenant_id`; cross-tenant seed totals are maintenance-only.

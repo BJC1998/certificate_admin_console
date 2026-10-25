@@ -1,6 +1,6 @@
 # Certificate Admin Console
 
-Steps 1–2: FastAPI health endpoint, React/TypeScript/Vite dashboard, SQLAlchemy/SQLite schema, tenant-scoped request infrastructure and repeatable demo data. Certificate pages remain navigation placeholders. No list, issuance, revocation or export business endpoints are implemented yet.
+Steps 1–3: FastAPI health endpoint, React/TypeScript/Vite dashboard, SQLAlchemy/SQLite schema, tenant-scoped certificate listing and repeatable demo data. The Certificates page supports tenant selection, search, sorting and pagination. Bulk issuance, details, revocation and export are not implemented yet.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ Run each command from the repository root in a separate terminal:
 npm.cmd --prefix frontend run dev
 ```
 
-Open http://127.0.0.1:5173. The dashboard requests http://127.0.0.1:8000/health directly and displays checking, connected or error status, with a manual recheck button. Navigation supports Certificates and Bulk Issue placeholders. Use Ctrl+C in each terminal to stop.
+Open http://127.0.0.1:5173. The dashboard requests http://127.0.0.1:8000/health directly and displays checking, connected or error status, with a manual recheck button. Navigation includes the Certificates register and a Bulk Issue placeholder. Use Ctrl+C in each terminal to stop.
 
 Health contract: `GET /health` returns HTTP 200 and `{"status":"ok"}`. This checks application liveness only, not database connectivity. API documentation: http://127.0.0.1:8000/docs.
 
@@ -65,6 +65,7 @@ frontend/
   src/
     api/             # HTTP clients
     components/      # Shared UI and health status
+    hooks/           # Certificate request lifecycle and stale-response guards
     pages/           # Dashboard and navigation placeholders
     types/           # Typed API contracts
 ```
@@ -172,3 +173,48 @@ Verified on Python 3.15.1:
 - Backend imports, `compileall`, `pip check`, frontend TypeScript check and Vite production build passed. No dependencies changed in Step 2.
 
 No Step 2 test failures or blockers remain. No Git commits were created, no development servers were started/stopped for this step, and no candidate-only answers or frontend source files were modified.
+
+## Step 3: certificate list API
+
+`GET /api/tenants/{tenant_id}/certificates`
+
+| Query parameter | Default | Accepted values |
+| --- | --- | --- |
+| search | empty | Up to 200 characters; trimmed literal substring of learner name or serial number |
+| page | 1 | Integer 1–1,000,000 |
+| page_size | 10 | Integer 1–100 |
+| sort_by | issued_at | learner_name, course_title, serial_number, issued_at, status |
+| sort_order | desc | asc, desc |
+
+Response fields: `records`, `total`, `page`, `page_size`, `total_pages`, `tenant_id`, `tenant_timezone`. Each record contains `id`, `tenant_id`, `learner_name`, `course_title`, `serial_number`, `issued_at`, and `status` (`valid`/`revoked`). `issued_at` is a tenant-local ISO 8601 datetime with an explicit UTC offset; `tenant_timezone` is the IANA zone. Stored UTC timestamps are never mutated by a read. Date sorting follows chronological issue timestamps; ties on any sort field use certificate id in the same direction.
+
+No matches return `records: []`, `total: 0`, `total_pages: 0`. A valid page beyond the last page returns empty records while preserving total and the requested page. Invalid query/path values return 422. Unknown tenants and conflicting path/header tenant selection return the same generic 404.
+
+The URL selects the demo tenant. `X-Tenant-ID` is optional on this endpoint, but when present must match the URL. Existing header-only session callers remain supported. Certificate records, joined learners/courses and counts are all tenant scoped.
+
+`GET /api/tenants` returns a list of `{id, name, timezone}` objects for the dropdown. This deliberate root-metadata directory is unauthenticated demo functionality and exposes no business records or counts. Neither URL selection nor the header authenticates the caller or proves tenant membership.
+
+Example requests (PowerShell):
+
+```powershell
+Invoke-RestMethod 'http://127.0.0.1:8000/api/tenants'
+Invoke-RestMethod 'http://127.0.0.1:8000/api/tenants/1/certificates?search=Sydney%20Learner%2001&page=1&page_size=10&sort_by=serial_number&sort_order=asc'
+Invoke-RestMethod 'http://127.0.0.1:8000/api/tenants/2/certificates?page=2&page_size=10'
+```
+
+## Step 3: browser behavior and verification
+
+Open `http://127.0.0.1:5173/#certificates`. The tenant dropdown loads actual metadata. Search submits using the Search button or Enter, and Clear removes the applied search. Changing tenant, submitted search, page size or sort resets to page 1. Click column headers to toggle sorting; Previous/Next use server-side pagination. Dates explicitly use the selected tenant's zone rather than the browser's zone.
+
+Loading, no tenants, no results, fetch errors and retry are explicit. Requests have a ten-second timeout. Obsolete requests are aborted, their callbacks are ignored after cleanup, and rows from a different query key are hidden immediately. The table scrolls horizontally on narrow layouts, with labelled inputs, keyboard controls and accessible sort states. No frontend dependencies were added.
+
+Verification completed:
+
+- **41 backend tests passed**, including 12 new list API tests and all 29 earlier regressions. All five sort fields were checked in both directions, stable ties across page boundaries, complete non-overlapping pagination, learner/serial search, literal wildcard escaping, empty results, invalid parameters, tenant isolation, header/path conflicts and known Sydney/Perth local timestamps.
+- Browser checks passed for learner search, serial search, sorting in both directions, moving to page 2, search resetting pagination, no-result UI, tenant switching, local dates and loading without stale rows.
+- An ignored temporary ASGI wrapper returned HTTP 503; the page displayed the error and Retry. Restoring the API and clicking Retry recovered the requested page. Delaying Perth requests while switching back to Sydney did not replace Sydney's records with the late response.
+- Browser verification used temporary ports 5174/8001 because the user's development servers already occupied 5173/8000. Production code contains no failure/delay controls. The user's servers were left untouched.
+- A read-only request to the existing production backend on port 8000 returned 200, 54 Sydney records total, ten records on page 1 and the expected CORS origin.
+- Backend imports/compilation and `pip check` passed. TypeScript checking and Vite production build passed. Run the Checks commands above to reproduce the automated checks.
+
+Limitations: demo selection is not access authentication; SQLite's default case-insensitive substring behavior handles ASCII case folding, not full Unicode case folding. Offset pagination is intended for this assessment and is not a snapshot across concurrent data changes. Bulk issuance, details, revocation and export remain deferred. No Git commits were created.
