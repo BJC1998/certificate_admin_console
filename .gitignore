@@ -4,7 +4,10 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+.mypy_cache/
+.ruff_cache/
 # Local data and configuration
 .env
 .env.*
@@ -27,3 +30,10 @@ tmp/
 playwright-report/
 test-results/
 coverage/
+# Local credentials and launcher state (tmp/ is already ignored)
+.aws/
+*.pem
+*.key
+*.pfx
+*.p12
+*.bak

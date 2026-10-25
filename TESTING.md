@@ -76,4 +76,6 @@ An initial frontend build found unsupported `exact` options in test-only getByRo
 
 A dependency recheck under the execution sandbox emitted temporary-directory cleanup warnings despite exit code 0. Repeating the pinned development-requirements check with TEMP/TMP pointed at the repository's ignored `tmp/install` directory completed without those warnings; pip check reported no broken requirements.
 
-All requested automated checks executed; none were skipped or left unexecutable. This is behavioral coverage, not a measured line/branch coverage percentage. These suites are not a substitute for real-browser layout, focus trapping, browser save dialogs, physical network behavior or load testing. Real-browser download/confirmation checks from Steps 3–6 remain documented in README; Step 7 does not claim to have automated those OS/browser behaviors.
+All requested automated checks executed; none were skipped or left unexecutable. This is behavioral coverage, not a measured line/branch coverage percentage. These suites are not a substitute for real-browser layout, focus trapping, browser save dialogs, physical network behavior or load testing. Final real-browser download/confirmation checks are documented in docs/VERIFICATION.md; Step 7 does not claim to have automated those OS/browser behaviors.
+
+For the final startup, cleanup, reset and actual browser walkthrough evidence, see [docs/VERIFICATION.md](docs/VERIFICATION.md). The final rerun uses the same counts above; its reports are `tmp/backend-final.xml` and `tmp/frontend-final.xml`.

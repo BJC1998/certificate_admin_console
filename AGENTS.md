@@ -19,14 +19,9 @@
 - `backend/app/core/`: environment configuration.
 - `backend/app/database/`: engine and request-scoped session lifecycle.
 - `frontend/src/pages/`: page composition; `components/`: reusable UI; `api/`: HTTP calls; `types/`: API types.
-- Step 1 exposes only `GET /health` -> HTTP 200, `{"status":"ok"}`. This is application liveness, not database readiness.
-- No certificate models, tables, tenant data or business endpoints in Step 1.
-- Step 2 adds the schema, seed and tenant boundary only; no list/issuance/revocation/export endpoints.
-- Step 3 adds read-only tenant metadata and certificate listing. No issuance/detail/revocation/export endpoints yet.
-- Step 4 adds tenant-scoped course selection and synchronous bulk issuance. No details/revocation/export endpoints, emails or job queues.
-- Step 5 adds tenant-scoped details and atomic revocation. Export remains deferred.
-- Step 6 adds complete filtered CSV export, shared status/search filters and optional tenant-local calendar-date sorting.
-- Step 7 adds pytest workflow fixtures and Vitest/React Testing Library tests. Preserve existing integration tests; do not replace real SQLite concurrency evidence with mocks.
+- Completed scope: health, demo tenant/course metadata, certificate list/details, synchronous bulk issuance, revocation, filtered CSV export and automated tests. Health is application liveness, not database readiness.
+- `start.bat` delegates to standard-library `scripts/dev.py` for tool/dependency checks, idempotent seed, supervised services and cleanup. Keep startup failures visible; stop only processes owned by that launcher. Do not add external infrastructure or new business features as delivery cleanup.
+- Preserve pytest/Vitest tests and real SQLite concurrency evidence. See README.md, TESTING.md and docs/VERIFICATION.md for final delivery instructions/evidence.
 
 ## Engineering rules
 - Enforce tenant isolation on the backend for every tenant-owned database query and mutation; frontend filtering is insufficient. Requests must use `get_session` and `TenantSession` with a fixed tenant context. Use `get_tenant_record` for 404 on missing or inaccessible records.
