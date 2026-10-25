@@ -1,1 +1,1 @@
-"""Database infrastructure. Business schema is intentionally deferred to Step 2."""
+"""SQLite schema tools and tenant-scoped request sessions."""

@@ -1,6 +1,6 @@
 # Certificate Admin Console
 
-Step 1 foundation: FastAPI health endpoint, SQLAlchemy/SQLite connection infrastructure, and a React/TypeScript/Vite dashboard. Certificate pages are navigation placeholders. No business models, tables, issuance, revocation or export are implemented yet.
+Steps 1–2: FastAPI health endpoint, React/TypeScript/Vite dashboard, SQLAlchemy/SQLite schema, tenant-scoped request infrastructure and repeatable demo data. Certificate pages remain navigation placeholders. No list, issuance, revocation or export business endpoints are implemented yet.
 
 ## Prerequisites
 
@@ -55,7 +55,7 @@ backend/
     main.py          # FastAPI composition and middleware
     core/            # Settings
     database/        # SQLite engine and session lifecycle
-    models/          # Reserved for Step 2, no models yet
+    models/          # Six domain models and shared UTC type
     routers/         # HTTP endpoints
     schemas/         # Request and response contracts
     services/        # Reserved for business operations
@@ -69,7 +69,7 @@ frontend/
     types/           # Typed API contracts
 ```
 
-Future tenant-owned operations must be tenant scoped on the backend. Health accesses no tenant data. Store timestamps in UTC and tenant timezones as IANA identifiers. Transactions and database unique constraints must enforce one certificate per tenant/course/learner, even after revocation, and prevent duplicate issuance audit entries. These business rules are reserved for later steps.
+Tenant-owned request operations must use the fixed-tenant session dependency. Health accesses no tenant data. See the Step 2 schema and boundary below.
 
 ## Checks
 
@@ -100,4 +100,75 @@ Verified on Windows with Python 3.15.1, Node.js 24.22.1 and npm 11.19.1:
 
 Environment issues encountered and resolved: the execution sandbox blocked package downloads and local sockets, so installation and socket-based verification ran with elevated tool permission. Its default temporary directory also blocked pip initialization; a repository-local temporary directory resolved that. The first clean npm reinstall hit Windows' native module lock while Vite was running; stopping Vite and rerunning succeeded. An initial test-client deprecation warning was resolved by installing and pinning `httpx2` and removing the unused legacy HTTP client.
 
-No Step 1 blockers remain. Health indicates application liveness only. Business models, authentication/authorized tenant context, tenant data isolation checks, certificate operations and their tests belong to subsequent approved steps. Existing candidate documents were left unchanged. No Git commits were created.
+At Step 1 completion, health indicated application liveness only and business features were deferred. Existing candidate documents were left unchanged. No Git commits were created.
+
+## Step 2: initialize and seed (PowerShell)
+
+From the repository root, with the existing virtual environment installed:
+
+```powershell
+Set-Location backend
+.\.venv\Scripts\python.exe -m app.database.init_db
+.\.venv\Scripts\python.exe -m app.database.seed
+.\.venv\Scripts\python.exe -m app.database.seed
+Set-Location ..
+```
+
+The seed command also initializes missing tables. Initialization is explicit; application imports/startup do not create tables. The default file is `backend/certificate_admin.db` and is Git-ignored. Set `DATABASE_URL` before starting the process to target another SQLite database.
+
+Expected counts after either seed run:
+
+| Table | Total | Per tenant |
+| --- | ---: | ---: |
+| tenants | 2 | — |
+| courses | 6 | 3 |
+| learners | 60 | 30 |
+| enrollments | 180 | 90 (72 completed, 18 incomplete) |
+| certificates | 108 | 54 (45 valid, 9 revoked) |
+| audit_logs | 126 | 63 (54 issued, 9 revoked) |
+
+Demo tenants: **1 = Sydney / Australia/Sydney**, **2 = Perth / Australia/Perth**. Each tenant has three courses and completed-but-unissued enrollments for later issuance tests. Certificate timestamps include UTC times around tenant-local midnight and Sydney's daylight-saving transition. A repeat seed preserves existing records, revoked status and timestamps. The seed is a sequential development fixture, not an import/synchronization service; use a dedicated demo database. It refuses to overwrite conflicting tenant IDs.
+
+## Step 2: model relationships and constraints
+
+| Model | Relationships / database guarantees |
+| --- | --- |
+| Tenant | Root record; nonempty name/timezone, IANA timezone validated by ORM. |
+| Course | Belongs to Tenant; unique `(tenant_id, id)` supports composite references. |
+| Learner | Belongs to Tenant; unique `(tenant_id, id)` supports composite references. |
+| Enrollment | Belongs to a Course and Learner in the same Tenant via composite FKs; unique `(tenant_id, course_id, learner_id)`; status `incomplete` or `completed`. |
+| Certificate | Composite FKs to Course, Learner and the matching Enrollment; globally unique serial; unique `(tenant_id, course_id, learner_id)` includes revoked records; status `valid` or `revoked`. |
+| AuditLog | Composite FK to the exact Certificate's tenant/id/course/learner tuple; one entry per `(tenant_id, certificate_id, action)`; action `issued` or `revoked`; nonempty actor. |
+
+All owned records have a non-null tenant FK. SQLite foreign keys are enabled on every connection, use RESTRICT deletion, and are verified with `PRAGMA foreign_key_check`. Indexes support tenant/course/status enrollment lookup, tenant/learner names, course titles, certificate tenant/date/id ordering, tenant/status and tenant/learner filters, and tenant/audit date ordering. Uniqueness constraints also create SQLite indexes for the certificate/enrollment identities, serials and certificate audit actions.
+
+`UTCDateTime` requires aware inputs, normalizes them to UTC for SQLite storage, and restores UTC tzinfo on reads. Tenant timezone names use `zoneinfo` and the pinned `tzdata` dependency; fixed offset strings such as `UTC+10` are rejected. Enum CHECK constraints also reject invalid statuses in direct SQL.
+
+Relationships are read-only navigation attributes with implicit lazy loading disabled. Load explicitly (e.g. `selectinload(Certificate.course)`); write explicit FK fields so composite constraints remain clear. Certificates and audits are preserved by request-session write guards, and references use RESTRICT rather than cascading deletion. Eligibility is defined by `Enrollment.is_eligible` (`completed` only); the actual issuance service is deferred to Step 4.
+
+## Step 2: demo tenant boundary and limitations
+
+- Future tenant-owned endpoints depend on `get_session`, which resolves an existing positive `X-Tenant-ID` and creates one immutable-context `TenantSession`. Missing/malformed headers return 422; an unknown tenant returns 404. `/health` remains tenant-free and unchanged. CORS permits the selector header.
+- **The header is a demo selector, not authentication or authorization. Anyone can select either demo tenant.** Production must authenticate the caller and verify tenant membership before resolving context. There is no claim of authenticated access isolation.
+- ORM SELECTs automatically receive tenant criteria, including aliases, projections and explicitly loaded relationships. The shared `get_tenant_record` returns the same generic 404 for inaccessible and nonexistent resources.
+- Writes take ownership from the session; body schemas reject `tenant_id`. Cross-tenant attachments and foreign references return 404 before flush; SQLite composite constraints provide a second integrity boundary.
+- Request sessions disallow raw SQL, Core queries, `from_statement`, bulk DML and legacy bulk mapping APIs, which could bypass ORM ownership checks. No bypass execution option is provided. Business code must not use the engine or a plain Session directly.
+- SQLite has no row-level access security here. The ORM boundary protects supported application access, not a database administrator, direct SQL or intentionally bypassing Python code. Plain Sessions and engine access exist only for explicit maintenance/test tasks.
+- Request sessions forbid certificate deletion/identity changes and audit modification/deletion. A uniqueness constraint prevents duplicate audit actions, but a future issuance service must still create the certificate and its issuance audit in one transaction; the schema alone does not create an audit automatically.
+- `create_all` initializes a new schema; it is not a migration tool. Concurrent seed processes and existing modified schemas are outside the demo seed contract. No tenant selector UI or business endpoints were added in Step 2.
+
+## Step 2 verification
+
+Run the backend check commands above; the test suite uses isolated in-memory SQLite databases and test-only HTTP routes, never the user's development data.
+
+Verified on Python 3.15.1:
+
+- Explicit SQLite initialization and two seed runs succeeded with identical counts shown above. A seed regression also compared every row before/after, including timestamps and revoked state.
+- **29 backend tests passed** (25 database/tenant tests and the four existing health/CORS tests).
+- Database rejected duplicate certificate identities (valid and revoked), global serials, enrollments and issuance audits; it also rejected cross-tenant course/learner/certificate references and mismatched audit references.
+- Request-scoped reads, aliases, projected columns, counts and explicit relationship loads stayed in the selected tenant. Test-only HTTP reads and mutations returned 404 for another tenant's resource; injected body ownership returned 422; the foreign record remained unchanged.
+- A failing audit insert rolled back the certificate in the same transaction. UTC normalization, naive timestamp rejection, IANA timezone validation, status CHECK constraints and history-preservation guards passed.
+- Inspected all six tables, eight explicit indexes, seven unique constraints and eleven foreign keys (including the composite constraints). Actual development database: `PRAGMA foreign_key_check` returned no violations; `PRAGMA integrity_check` returned `ok`.
+- Backend imports, `compileall`, `pip check`, frontend TypeScript check and Vite production build passed. No dependencies changed in Step 2.
+
+No Step 2 test failures or blockers remain. No Git commits were created, no development servers were started/stopped for this step, and no candidate-only answers or frontend source files were modified.

@@ -1,35 +1,21 @@
-"""Lazy SQLite engine and session lifecycle; importing this creates no database."""
+"""Tenant-scoped request sessions; plain Sessions are for maintenance tools only."""
 
 from collections.abc import Generator
-from sqlite3 import Connection
+from typing import Annotated
 
-from sqlalchemy import create_engine, event
-from sqlalchemy.orm import Session, sessionmaker
+from fastapi import Depends
+from sqlalchemy.orm import sessionmaker
 
-from app.core.config import settings
+from app.core.tenant import TenantContext, get_tenant_context
+from app.database.engine import engine
+from app.database.tenant_session import TenantSession
 
-if not settings.database_url.startswith("sqlite:"):
-    raise ValueError("This application requires a SQLite DATABASE_URL.")
-
-engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False},
-)
+SessionLocal = sessionmaker(bind=engine, class_=TenantSession, autoflush=False, expire_on_commit=False)
 
 
-@event.listens_for(engine, "connect")
-def enable_foreign_keys(connection: Connection, _connection_record: object) -> None:
-    cursor = connection.cursor()
-    try:
-        cursor.execute("PRAGMA foreign_keys=ON")
-    finally:
-        cursor.close()
-
-
-SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-
-
-def get_session() -> Generator[Session, None, None]:
-    """Yield one session; services will own explicit write transactions."""
-    with SessionLocal() as session:
+def get_session(
+    tenant: Annotated[TenantContext, Depends(get_tenant_context)],
+) -> Generator[TenantSession, None, None]:
+    """Resolve demo tenant context first. Services own explicit transactions."""
+    with SessionLocal(tenant_id=tenant.id) as session:
         yield session

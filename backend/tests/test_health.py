@@ -37,10 +37,12 @@ class HealthTests(unittest.TestCase):
             headers={
                 "Origin": "http://localhost:5173",
                 "Access-Control-Request-Method": "GET",
+                "Access-Control-Request-Headers": "X-Tenant-ID",
             },
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.headers["access-control-allow-origin"], "http://localhost:5173")
+        self.assertIn("X-Tenant-ID", response.headers["access-control-allow-headers"])
 
 
 if __name__ == "__main__":
