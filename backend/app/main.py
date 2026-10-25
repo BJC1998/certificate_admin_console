@@ -14,6 +14,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "X-Tenant-ID"],
+    expose_headers=["Content-Disposition"],
 )
 app.include_router(health_router)
 app.include_router(tenants_router)

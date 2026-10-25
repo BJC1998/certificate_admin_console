@@ -1,9 +1,10 @@
 export interface TenantOption { id: number; name: string; timezone: string }
-export type SortField = 'learner_name' | 'course_title' | 'serial_number' | 'issued_at' | 'status'
+export type SortField = 'learner_name' | 'course_title' | 'serial_number' | 'issued_at' | 'issue_date' | 'status'
 export type SortOrder = 'asc' | 'desc'
 export interface CertificateQuery {
   tenantId: number | null
   search: string
+  status?: 'valid' | 'revoked'
   page: number
   pageSize: number
   sortBy: SortField

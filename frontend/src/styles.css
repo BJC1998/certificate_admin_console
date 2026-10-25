@@ -140,3 +140,7 @@ select, input { border: 1px solid #cbd9e1; border-radius: 6px; background: #fff;
 .revoke-dialog strong { overflow-wrap: anywhere; }
 .dialog-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 12px; margin-top: 26px; }
 @media (max-width: 650px) { .detail-grid { grid-template-columns: 1fr; } }
+.register-actions { display: flex; align-items: flex-start; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+.export-control { max-width: 320px; }
+.export-message { font-size: 11px; margin: 8px 0 12px; overflow-wrap: anywhere; }
+.search-toolbar .page-size-control { margin-left: 0; }

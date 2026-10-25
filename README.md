@@ -1,6 +1,6 @@
 # Certificate Admin Console
 
-Steps 1–5: FastAPI health endpoint, React/TypeScript/Vite dashboard, SQLAlchemy/SQLite schema, tenant-scoped certificate listing/details, reliable bulk issuance/revocation and repeatable demo data. Certificate serial links open details with confirmed revocation; Bulk Issue supports individual outcomes and safe retries. CSV export is not implemented yet.
+Steps 1–6: FastAPI health endpoint, React/TypeScript/Vite dashboard, SQLAlchemy/SQLite schema, tenant-scoped certificate listing/details, reliable bulk issuance/revocation, filtered CSV export and repeatable demo data. Certificate serial links open details with confirmed revocation; Bulk Issue supports individual outcomes and safe retries; Export CSV downloads all matching records.
 
 ## Prerequisites
 
@@ -305,3 +305,56 @@ Verified results:
 - A simulated detail GET 503 showed explicit error/Retry; restoring the API and retrying displayed the revoked detail again. A cross-tenant detail URL showed 404 without exposing the record. The browser also displayed a loading state during a delayed GET.
 
 No schema migration or new dependencies were needed. Demo tenant selection and `demo-admin-{tenant_id}` remain unauthenticated context. The detail GET timeout is ten seconds; revoke response timeout is thirty seconds, and a timeout cannot undo committed server work. There is no restore/reactivation action or CSV export in Step 5. No candidate-only answers were modified and no Git commits were created.
+
+## Step 6: filtered CSV export
+
+`GET /api/tenants/{tenant_id}/certificates/export`
+
+The static export route is registered before the integer detail route. It accepts the same applied search/status/sort conditions as listing:
+
+| Parameter | Default | Values |
+| --- | --- | --- |
+| search | empty | Trimmed literal learner-name or serial substring, maximum 200 characters |
+| status | omitted | valid or revoked; omit for all statuses |
+| sort_by | issued_at | learner_name, course_title, serial_number, issued_at, issue_date, status |
+| sort_order | desc | asc or desc |
+
+List and export both use `services/certificate_queries.py` for joins, tenant filters, escaped search, optional status and stable ordering. The list additionally applies pagination; export never applies it (page/page_size query extras are ignored). Every sort has a certificate-id tie-breaker in the same direction.
+
+`issued_at` sorts chronologically. `issue_date` sorts by the tenant-local calendar date, then id, so records on the same local day can intentionally differ from chronological order. Each application SQLite connection registers `tenant_local_date`, which converts stored UTC through the tenant's IANA zone. This function is application-side connection configuration, not a stored function available automatically in an external SQLite viewer. No schema migration is needed. The list UI offers a Status filter and Date ordering selector; its date column toggles direction using the chosen date basis.
+
+CSV columns are exactly **Learner Name, Course Title, Serial Number, Issue Date**. Dates are tenant-local ISO 8601 timestamps including offset (and fractional seconds when present). Output uses UTF-8 with BOM for Windows spreadsheet compatibility and CRLF records. Standard csv.writer escaping preserves Unicode, commas, quotes and embedded newlines. Text cells beginning with formula triggers (=, +, -, @), including after leading whitespace/BOM, and cells beginning with tab/CR/LF are prefixed with an apostrophe. This intentionally changes those dangerous text representations to prevent formula interpretation; source records are unchanged.
+
+## Step 6: export strategy and failure handling
+
+The backend selects primitive scalar columns, opens one ordered cursor and consumes `yield_per=500` / 500-row partitions. It does not load ORM entities or use an OFFSET-based export loop. A single SQLite cursor provides a consistent data read for that SELECT, avoiding batch-boundary skips/duplicates caused by multiple independently paged queries.
+
+Rows are encoded in batches into a `SpooledTemporaryFile`: at most 1 MiB remains in that in-memory spool; larger files roll to the OS temporary directory. Preparation completes before HTTP headers, then releases the database transaction and sends 64 KiB file chunks. This keeps Python application allocations bounded by the spool/batch/chunk sizes rather than all matching rows, and avoids holding the database read open for a slow network client. The response closes the file on completion, failure or disconnect.
+
+Database/temporary-file preparation failures return 503 with Retry-After instead of a partial CSV attachment. Missing tenants return 404; malformed/out-of-range tenant ids, invalid sort/status or overlong search return 422; conflicting optional X-Tenant-ID returns 404. An empty result is a successful CSV containing only the header. Responses include an informative ASCII attachment filename with tenant name/id, all/filtered and tenant-local generation timestamp, Content-Length, no-store and nosniff. CORS exposes Content-Disposition so the frontend uses the server's filename.
+
+In the list, Export CSV exports the **applied** search and status filter plus current sort/tenant, irrespective of the displayed page. Typing in the search box does not apply it until Search/Enter, matching the table behavior. The button disables during preparation/download, errors offer Retry CSV export, and successful responses trigger an informative filename download. Changing the selected tenant/search/status/sort cancels an obsolete in-flight export. The browser checks status, content type and expected byte length before starting a download; its message says Download started rather than claiming the user saved the file.
+
+Example commands (PowerShell, no page parameters):
+
+```powershell
+Invoke-WebRequest 'http://127.0.0.1:8000/api/tenants/1/certificates/export' -OutFile certificates-sydney.csv
+Invoke-WebRequest 'http://127.0.0.1:8000/api/tenants/1/certificates/export?search=Sydney%20Learner%2001&status=valid&sort_by=issue_date&sort_order=asc' -OutFile certificates-filtered.csv
+.\backend\.venv\Scripts\python.exe -m unittest discover -s backend/tests -p test_certificate_export.py -v
+.\backend\.venv\Scripts\python.exe -m unittest discover -s backend/tests -v
+.\backend\.venv\Scripts\python.exe -m compileall -q backend/app backend/tests
+.\backend\.venv\Scripts\python.exe -m pip check
+npm.cmd --prefix frontend run build
+```
+
+Verified results:
+
+- **72 backend tests passed**, including 13 new export tests and all 59 prior regressions. Backend compilation, dependency checks, TypeScript checking and Vite production build passed; no dependencies were added.
+- Unfiltered seeded export included all 54 certificates for the selected tenant even with page=2/page_size=1. Name search produced three rows, exact serial search one, and revoked filter nine. Shared list/export counts and serial order matched for combined filters and all six sort fields in both directions.
+- CSV headers/byte length, UTF-8 BOM, Chinese text, quoted commas/newlines, formula protection, empty results, invalid inputs and cross-tenant isolation passed.
+- Exact Sydney DST boundary values exported as `2026-10-04T01:59:00+10:00` and `2026-10-04T03:00:00+11:00`; Perth +08 and local-calendar-date/id ordering were verified separately from chronological ordering.
+- A simulated database fetch error after a batch had been processed returned 503 without a CSV attachment and closed the spool. Failure during tenant lookup also returned 503. A simulated disconnected HTTP send closed the prepared file.
+- **25,000 generated rows** exported to a **15,275,055-byte CSV** with 500-row reads and disk rollover. The full-suite run measured **3,067,756 bytes peak Python allocations** with tracemalloc (the focused run measured 3,079,750). This measures Python allocations during preparation, not total process RSS or SQLite's native sort/cache allocations. The resulting CSV was parsed row by row to confirm all 25,000 records.
+- Browser verification used a separate seeded database and temporary ports 5174/8001. Export while viewing page 2 downloaded a real file with 54 rows and 54 unique serials. A combination of learner search, valid status and local calendar-date sorting was sent without pagination parameters. A simulated 503 displayed the download error; retry downloaded a real three-row filtered file in the expected order. The saved files' headers and contents were read back and checked.
+
+Limitations: the backend deliberately prepares the complete temporary file before sending the first download byte, so preparation needs O(file size) temporary disk capacity and large exports can wait before downloading. The SQLite read cursor can delay concurrent writers during preparation, and derived local-date sorting can require database temporary sorting space. The frontend currently uses fetch/Blob and therefore buffers the completed file in browser memory; backend bounded-memory behavior does not imply bounded browser memory. A two-minute browser timeout may require retry for very large/slow exports. There is no background export queue, resumable download or production authentication. No source data was modified, no candidate-only answers were changed and no Git commits were created.

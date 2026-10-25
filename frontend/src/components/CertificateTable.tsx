@@ -15,13 +15,14 @@ export function CertificateTable({ data, sortBy, sortOrder, onSort }: {
     <div className="table-scroll" tabIndex={0} role="region" aria-label="Certificate table, scroll horizontally on smaller screens">
       <table className="certificate-table">
         <caption className="sr-only">Certificates. Issue dates are displayed in {data.tenant_timezone}.</caption>
-        <thead><tr>{columns.map(({ key, label }) => (
-          <th key={key} scope="col" aria-sort={sortBy === key ? sortOrder === 'asc' ? 'ascending' : 'descending' : 'none'}>
+        <thead><tr>{columns.map(({ key, label }) => {
+          const active = sortBy === key || (key === 'issued_at' && sortBy === 'issue_date')
+          return <th key={key} scope="col" aria-sort={active ? sortOrder === 'asc' ? 'ascending' : 'descending' : 'none'}>
             <button className="sort-button" onClick={() => onSort(key)} aria-label={`Sort by ${label.toLowerCase()}`}>
-              {label}<span aria-hidden="true">{sortBy === key ? sortOrder === 'asc' ? '↑' : '↓' : '↕'}</span>
+              {label}<span aria-hidden="true">{active ? sortOrder === 'asc' ? '↑' : '↓' : '↕'}</span>
             </button>
           </th>
-        ))}</tr></thead>
+        })}</tr></thead>
         <tbody>{data.records.map((row) => (
           <tr key={row.id}>
             <td className="learner-cell">{row.learner_name}</td><td>{row.course_title}</td>

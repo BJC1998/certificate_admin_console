@@ -5,14 +5,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models import CertificateStatus
 
-SortField = Literal["learner_name", "course_title", "serial_number", "issued_at", "status"]
+SortField = Literal["learner_name", "course_title", "serial_number", "issued_at", "issue_date", "status"]
 SortOrder = Literal["asc", "desc"]
 
 
-class CertificateQuery(BaseModel):
+class CertificateFilters(BaseModel):
     search: str = Field(default="", max_length=200)
-    page: int = Field(default=1, ge=1, le=1_000_000)
-    page_size: int = Field(default=10, ge=1, le=100)
+    status: CertificateStatus | None = None
     sort_by: SortField = "issued_at"
     sort_order: SortOrder = "desc"
 
@@ -20,6 +19,15 @@ class CertificateQuery(BaseModel):
     @classmethod
     def trim_search(cls, value: str) -> str:
         return value.strip()
+
+
+class CertificateQuery(CertificateFilters):
+    page: int = Field(default=1, ge=1, le=1_000_000)
+    page_size: int = Field(default=10, ge=1, le=100)
+
+
+class CertificateExportQuery(CertificateFilters):
+    """Intentionally has no page/page_size: export always includes all matches."""
 
 
 class TenantOption(BaseModel):

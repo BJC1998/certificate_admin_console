@@ -48,6 +48,7 @@ export async function getCertificates(query: CertificateQuery, signal: AbortSign
   if (query.tenantId === null) throw new Error('Select a tenant first.')
   const params = new URLSearchParams({ search: query.search, page: String(query.page),
     page_size: String(query.pageSize), sort_by: query.sortBy, sort_order: query.sortOrder })
+  if (query.status) params.set('status', query.status)
   const data = await request(`/api/tenants/${query.tenantId}/certificates?${params}`, signal, query.tenantId) as CertificatePage
   if (!data || data.tenant_id !== query.tenantId || !Array.isArray(data.records)
       || !Number.isInteger(data.total) || !Number.isInteger(data.total_pages)
@@ -59,4 +60,22 @@ export async function getCertificates(query: CertificateQuery, signal: AbortSign
     throw new Error('The API returned an invalid certificate response.')
   }
   return data
+}
+
+export async function exportCertificates(query: CertificateQuery, signal: AbortSignal): Promise<{ blob: Blob; filename: string }> {
+  if (query.tenantId === null) throw new Error('Select a tenant first.')
+  // Page and page_size are deliberately excluded from the complete export request.
+  const params = new URLSearchParams({ search: query.search, sort_by: query.sortBy, sort_order: query.sortOrder })
+  if (query.status) params.set('status', query.status)
+  const response = await fetch(`${API_BASE_URL}/api/tenants/${query.tenantId}/certificates/export?${params}`, {
+    signal, headers: { 'X-Tenant-ID': String(query.tenantId) },
+  })
+  if (!response.ok) throw new Error(`CSV export returned HTTP ${response.status}. Please retry.`)
+  if (!response.headers.get('content-type')?.startsWith('text/csv')) throw new Error('The API did not return a CSV file.')
+  const blob = await response.blob()
+  const length = response.headers.get('content-length')
+  if (length !== null && blob.size !== Number(length)) throw new Error('The CSV download was incomplete. Please retry.')
+  const filename = /filename="([a-zA-Z0-9_.-]+\.csv)"/.exec(response.headers.get('content-disposition') ?? '')?.[1]
+    ?? `certificates-tenant-${query.tenantId}-${new Date().toISOString().replace(/[:.]/g, '-')}.csv`
+  return { blob, filename }
 }

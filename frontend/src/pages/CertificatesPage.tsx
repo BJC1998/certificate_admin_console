@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import type { FormEvent } from 'react'
 import { getTenants } from '../api/certificates'
 import { CertificateTable } from '../components/CertificateTable'
+import { ExportCSVButton } from '../components/ExportCSVButton'
 import { useCertificates } from '../hooks/useCertificates'
 import type { CertificateQuery, LoadState, SortField, TenantOption } from '../types/certificates'
 
@@ -39,8 +40,11 @@ export function CertificatesPage({ initialTenantId = null, onTenantChange }: {
     setQuery((previous) => ({ ...previous, search: draft.trim(), page: 1 }))
   }
   function sort(field: SortField) {
-    setQuery((previous) => ({ ...previous, page: 1, sortBy: field,
-      sortOrder: previous.sortBy === field && previous.sortOrder === 'asc' ? 'desc' : 'asc' }))
+    setQuery((previous) => {
+      const target = field === 'issued_at' && previous.sortBy === 'issue_date' ? 'issue_date' : field
+      return { ...previous, page: 1, sortBy: target,
+        sortOrder: previous.sortBy === target && previous.sortOrder === 'asc' ? 'desc' : 'asc' }
+    })
   }
   function clearSearch() {
     setDraft('')
@@ -66,13 +70,27 @@ export function CertificatesPage({ initialTenantId = null, onTenantChange }: {
       : tenants.status === 'success' && !tenants.data.length ? <section className="card feedback"><h2>No tenants available</h2><p>Initialize and seed the demo database to get started.</p></section>
       : <section className="card certificate-card" aria-labelledby="register-title">
         <div className="register-heading"><div><h2 id="register-title">Certificate register</h2><p>{selectedTenant ? `${selectedTenant.name} · Dates in ${selectedTenant.timezone}` : 'Loading tenant information…'}</p></div>
-          {state.status === 'success' && <span className="record-count">{state.data.total} {state.data.total === 1 ? 'record' : 'records'}</span>}
+          <div className="register-actions">
+            {state.status === 'success' && <span className="record-count">{state.data.total} {state.data.total === 1 ? 'record' : 'records'}</span>}
+            <ExportCSVButton key={JSON.stringify([query.tenantId, query.search, query.status, query.sortBy, query.sortOrder])}
+              query={query} disabled={!selectedTenant || tenants.status !== 'success'} />
+          </div>
         </div>
         <form className="search-toolbar" onSubmit={search} role="search">
           <div className="search-field"><label htmlFor="certificate-search">Learner name or serial number</label>
             <input id="certificate-search" type="search" placeholder="Search certificates…" maxLength={200} value={draft} onChange={(event) => setDraft(event.target.value)} /></div>
           <button type="submit" disabled={query.tenantId === null}>Search</button>
           {(draft || query.search) && <button type="button" onClick={clearSearch}>Clear</button>}
+          <div className="page-size-control"><label htmlFor="certificate-status-filter">Status</label>
+            <select id="certificate-status-filter" value={query.status ?? ''} onChange={(event) => setQuery((previous) => ({ ...previous,
+              status: event.target.value ? event.target.value as 'valid' | 'revoked' : undefined, page: 1 }))}>
+              <option value="">All statuses</option><option value="valid">Valid</option><option value="revoked">Revoked</option>
+            </select></div>
+          <div className="page-size-control"><label htmlFor="date-order">Date ordering</label>
+            <select id="date-order" value={query.sortBy === 'issue_date' ? 'issue_date' : 'issued_at'} onChange={(event) => setQuery((previous) => ({ ...previous,
+              sortBy: event.target.value as 'issued_at' | 'issue_date', page: 1 }))}>
+              <option value="issued_at">Chronological</option><option value="issue_date">Local calendar date</option>
+            </select></div>
           <div className="page-size-control"><label htmlFor="page-size">Rows per page</label><select id="page-size" value={query.pageSize}
             onChange={(event) => setQuery((previous) => ({ ...previous, pageSize: Number(event.target.value), page: 1 }))}>
             {[10, 25, 50, 100].map((size) => <option key={size} value={size}>{size}</option>)}</select></div>

@@ -25,6 +25,7 @@
 - Step 3 adds read-only tenant metadata and certificate listing. No issuance/detail/revocation/export endpoints yet.
 - Step 4 adds tenant-scoped course selection and synchronous bulk issuance. No details/revocation/export endpoints, emails or job queues.
 - Step 5 adds tenant-scoped details and atomic revocation. Export remains deferred.
+- Step 6 adds complete filtered CSV export, shared status/search filters and optional tenant-local calendar-date sorting.
 
 ## Engineering rules
 - Enforce tenant isolation on the backend for every tenant-owned database query and mutation; frontend filtering is insufficient. Requests must use `get_session` and `TenantSession` with a fixed tenant context. Use `get_tenant_record` for 404 on missing or inaccessible records.
@@ -51,6 +52,10 @@
 - Use `revoke` for revocation; retain issued certificates and audit history.
 - Revocation changes only valid -> revoked and writes its audit in the same transaction. Repeated calls return `changed: false` without additional writes. A concurrent conflict is successful only after confirming both revoked state and the existing revoke audit.
 - Detail URLs are `#certificates/{tenant_id}/{certificate_id}`. Require explicit confirmation before POST; cancellation must send no mutation. Preserve readable revoked details and reload status after an uncertain mutation response.
+- List/export must reuse `certificate_queries` filters and ordering, including tenant predicates and id tie-breakers. Export must never apply page/page_size.
+- CSV reads use primitive columns, one cursor and 500-row partitions. Prepare a bounded-memory/disk-spooled file before sending headers so DB failures return 503 rather than a partial success CSV. Release the DB transaction before download and close temp resources on completion/disconnect.
+- CSV uses UTF-8 BOM, standard csv.writer escaping and apostrophe-prefixed formula-like text. Dates retain tenant-local ISO offsets. `issue_date` sorting uses the registered SQLite IANA-aware function, not a fixed UTC offset.
+- Frontend export sends only applied search/status/sort parameters and current tenant. Cancel obsolete exports on selection changes; never treat a failed or incomplete response as a successful download. The fetch/Blob browser fallback buffers the file client-side; do not claim bounded browser memory.
 - Avoid Redis, Kafka, Docker, microservices and unnecessary infrastructure.
 - Keep routers thin, validate API inputs, and use explicit types. Python uses snake_case; React components and types use PascalCase.
 - Keep configuration in environment variables; do not commit secrets, virtual environments, databases or dependency folders.

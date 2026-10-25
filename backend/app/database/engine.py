@@ -4,6 +4,7 @@ from sqlite3 import Connection
 from sqlalchemy import Engine, create_engine, event
 
 from app.core.config import settings
+from app.core.timezones import tenant_local_date
 
 
 def create_sqlite_engine(database_url: str, **kwargs: object) -> Engine:
@@ -13,6 +14,7 @@ def create_sqlite_engine(database_url: str, **kwargs: object) -> Engine:
 
     @event.listens_for(sqlite_engine, "connect")
     def enable_foreign_keys(connection: Connection, _connection_record: object) -> None:
+        connection.create_function("tenant_local_date", 2, tenant_local_date, deterministic=True)
         cursor = connection.cursor()
         try:
             cursor.execute("PRAGMA foreign_keys=ON")
