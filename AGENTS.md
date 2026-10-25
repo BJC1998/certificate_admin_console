@@ -26,6 +26,7 @@
 - Step 4 adds tenant-scoped course selection and synchronous bulk issuance. No details/revocation/export endpoints, emails or job queues.
 - Step 5 adds tenant-scoped details and atomic revocation. Export remains deferred.
 - Step 6 adds complete filtered CSV export, shared status/search filters and optional tenant-local calendar-date sorting.
+- Step 7 adds pytest workflow fixtures and Vitest/React Testing Library tests. Preserve existing integration tests; do not replace real SQLite concurrency evidence with mocks.
 
 ## Engineering rules
 - Enforce tenant isolation on the backend for every tenant-owned database query and mutation; frontend filtering is insufficient. Requests must use `get_session` and `TenantSession` with a fixed tenant context. Use `get_tenant_record` for 404 on missing or inaccessible records.
@@ -61,12 +62,13 @@
 - Keep configuration in environment variables; do not commit secrets, virtual environments, databases or dependency folders.
 - SQLite foreign keys must be enabled for every connection. Do not create tables as an import side effect.
 - Frontend must show honest loading and failure states. Do not display mock business success.
-- Install backend dependencies from `backend/requirements.txt`; use the frontend lockfile with `npm ci`.
+- Install runtime backend dependencies from `backend/requirements.txt`; use `backend/requirements-dev.txt` for the complete pytest suite. Use the frontend lockfile with `npm ci` (Node >=22.12 for test tooling).
+- Tests must use isolated SQLite databases or mocked frontend fetch/API boundaries, never the developer's data or live server. Keep browser API shims test-only, and distinguish jsdom assertions from real-browser evidence.
 
 ## Verification commands (PowerShell, repository root)
 ```powershell
-.\backend\.venv\Scripts\python.exe -m unittest discover -s backend/tests -v
+.\backend\.venv\Scripts\python.exe -m pytest -q
 .\backend\.venv\Scripts\python.exe -m compileall -q backend/app
-Set-Location frontend
-npm.cmd run build
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run build
 ```

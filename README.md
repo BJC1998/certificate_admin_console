@@ -1,11 +1,11 @@
 # Certificate Admin Console
 
-Steps 1–6: FastAPI health endpoint, React/TypeScript/Vite dashboard, SQLAlchemy/SQLite schema, tenant-scoped certificate listing/details, reliable bulk issuance/revocation, filtered CSV export and repeatable demo data. Certificate serial links open details with confirmed revocation; Bulk Issue supports individual outcomes and safe retries; Export CSV downloads all matching records.
+Steps 1–7: FastAPI health endpoint, React/TypeScript/Vite dashboard, SQLAlchemy/SQLite schema, tenant-scoped certificate listing/details, reliable bulk issuance/revocation, filtered CSV export, repeatable demo data and automated backend/frontend tests. Certificate serial links open details with confirmed revocation; Bulk Issue supports individual outcomes and safe retries; Export CSV downloads all matching records.
 
 ## Prerequisites
 
 - Python **3.15**, as requested for Step 1. Verify with `py -3.15 --version`.
-- Node.js 20.19+ or 22.12+, npm, Windows PowerShell. Verified with Node.js 24.22.1 and npm 11.19.1.
+- Node.js 22.12+ (including the Step 7 test tooling), npm, Windows PowerShell. Verified with Node.js 24.22.1 and npm 11.19.1.
 - Git is already initialized. No commits are created automatically.
 
 ## Install (PowerShell, repository root)
@@ -358,3 +358,19 @@ Verified results:
 - Browser verification used a separate seeded database and temporary ports 5174/8001. Export while viewing page 2 downloaded a real file with 54 rows and 54 unique serials. A combination of learner search, valid status and local calendar-date sorting was sent without pagination parameters. A simulated 503 displayed the download error; retry downloaded a real three-row filtered file in the expected order. The saved files' headers and contents were read back and checked.
 
 Limitations: the backend deliberately prepares the complete temporary file before sending the first download byte, so preparation needs O(file size) temporary disk capacity and large exports can wait before downloading. The SQLite read cursor can delay concurrent writers during preparation, and derived local-date sorting can require database temporary sorting space. The frontend currently uses fetch/Blob and therefore buffers the completed file in browser memory; backend bounded-memory behavior does not imply bounded browser memory. A two-minute browser timeout may require retry for very large/slow exports. There is no background export queue, resumable download or production authentication. No source data was modified, no candidate-only answers were changed and no Git commits were created.
+
+## Step 7: complete automated suite
+
+See [TESTING.md](TESTING.md) for installation, isolation design, coverage mapping and result interpretation. Run from the repository root:
+
+```powershell
+.\backend\.venv\Scripts\python.exe -m pip install -r backend/requirements-dev.txt
+npm.cmd --prefix frontend ci
+.\backend\.venv\Scripts\python.exe -m pytest -q
+npm.cmd --prefix frontend test
+npm.cmd --prefix frontend run build
+```
+
+Verified: **82 pytest tests plus 48 additional unittest subtests passed; 28 frontend tests across five files passed; zero failed/errors and zero skipped.** Frontend TypeScript and production build also passed. Existing unittest tests are retained and collected by pytest; ten additional pytest cases cover cross-interface tenant isolation, forbidden mutation body fields, exact completed-learner issuance/audit correspondence and full filtered pagination/export equivalence. The frontend uses Vitest, React Testing Library, user-event, jest-dom and jsdom, including separate real API-client contract tests.
+
+The first build identified redundant unsupported test query options; those test-only type errors were fixed and the frontend suite/build rerun successfully. No product/API implementation rewrite, new business feature, production data mutation or Git commit was made for Step 7. All requested automated tests executed. Native modal focus behavior, OS file saving and real-browser layout are outside jsdom's capabilities and are not claimed as automated end-to-end coverage.
