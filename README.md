@@ -10,7 +10,17 @@ Open PowerShell in the repository folder and run:
 .\start.bat
 ```
 
-The launcher checks Python/Node/npm, creates `backend/.venv` when missing, installs pinned backend and locked frontend dependencies when needed, initializes SQLite, runs the idempotent seed, and starts both development servers. First use needs access to PyPI/npm or an appropriate local cache. Existing demo records, revoked certificates and issue history are preserved.
+The launcher checks Python/Node/npm, creates `backend/.venv` when missing, installs pinned backend and locked frontend dependencies when needed, initializes missing SQLite tables, and starts both development servers. It does **not** insert demo data. First use needs access to PyPI/npm or an appropriate local cache. Existing records, revoked certificates and issue history are preserved.
+
+To load demo data separately (after environment preparation), run from the repository root:
+
+```powershell
+Push-Location backend
+.\.venv\Scripts\python.exe -m app.database.seed
+Pop-Location
+```
+
+On a fresh checkout, run `.\start.bat --prepare-only` first to install dependencies. Without seeding, a new database has empty tables and no demo tenants.
 
 Wait for `[READY]`, then open:
 
@@ -123,7 +133,7 @@ AGENTS.md                    Engineering rules for AI tools
 TESTING.md                   Commands, coverage map and test boundaries
 ```
 
-Routers delegate business behavior to services. Tenant-owned request access uses a fixed-tenant SQLAlchemy session, explicit scoped predicates and composite database constraints. Maintenance tools use separate sessions. Tables are initialized explicitly rather than as an import side effect; the launcher invokes the explicit seed tool.
+Routers delegate business behavior to services. Tenant-owned request access uses a fixed-tenant SQLAlchemy session, explicit scoped predicates and composite database constraints. Maintenance tools use separate sessions. Tables are initialized explicitly rather than as an import side effect; the launcher invokes schema initialization only. Demo seed is a separate manual operation.
 
 **Tenant selection is demo context, not authentication or authorization.** Users can choose either demo tenant. URL-scoped endpoints use the tenant path parameter; an optional `X-Tenant-ID` must agree or return 404. Request bodies cannot supply ownership or actor fields. The tenant directory exposes only root id/name/timezone metadata. Production must authenticate callers and verify membership; the demo actor `demo-admin-{tenant_id}` is not a verified identity.
 
@@ -162,13 +172,17 @@ Move-Item -LiteralPath '.\backend\certificate_admin.db' -Destination (Join-Path 
 .\start.bat --prepare-only
 ```
 
-Run the move only when that file exists and no process is using it. This preserves the old database in the backup. For a custom DATABASE_URL, manage that explicitly selected file instead. Database/backup files are excluded from Git. Never remove `.git` or rewrite meaningful history as part of a reset.
+This creates empty tables. To restore demo data, run the separate seed commands above. Run the move only when that file exists and no process is using it. This preserves the old database in the backup. For a custom DATABASE_URL, manage that explicitly selected file instead. Database/backup files are excluded from Git. Never remove `.git` or rewrite meaningful history as part of a reset.
 
 For an isolated manual demo without resetting existing data:
 
 ```powershell
 New-Item -ItemType Directory -Force tmp | Out-Null
 $env:DATABASE_URL = 'sqlite:///' + (Join-Path (Get-Location) 'tmp/manual-demo.db').Replace('\', '/')
+.\start.bat --prepare-only
+Push-Location backend
+.\.venv\Scripts\python.exe -m app.database.seed
+Pop-Location
 .\start.bat
 # After stopping, return this terminal to the default database:
 Remove-Item Env:DATABASE_URL

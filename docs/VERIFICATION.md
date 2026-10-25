@@ -1,5 +1,7 @@
 # Final delivery verification
 
+Historical Step 8 evidence below reflects the original auto-seeding launcher. The subsequent requested change separates seeding from startup: `start.bat` now initializes tables only. The follow-up checks are recorded at the end of this file.
+
 This record describes checks actually executed after Step 8 documentation/launcher cleanup. It is not a candidate reflection or an answer to the assessment's individual design questions.
 
 ## Environment and automated checks
@@ -64,3 +66,11 @@ The manual workflow wrote only the separate verification database; automated tes
 ## Remaining limitations
 
 Demo tenant/actor context is not authenticated membership access. SQLite concurrency and synchronous batch work remain bounded by the implemented retry behavior. CSV preparation uses temporary disk, and the browser Blob path buffers the file. The test suite's jsdom shims do not replace real-browser layout/focus/download checks. Complete technical limits and submission checklist are in README.md; candidate-only personal answers and the recording link must be supplied by the candidate.
+
+## Follow-up: separate seed from startup
+
+Changed scripts/dev.py to call initialize_database() only; both normal startup and --prepare-only leave data insertion to the explicit app.database.seed command. README and AGENTS.md now document this separation. Existing databases are not reset.
+
+Executed start.bat --prepare-only with DATABASE_URL pointing at an isolated tmp/start-no-seed-check.db. All six tables existed and each had zero rows. Executed the documented seed module twice from backend/: both runs returned 2 tenants, 6 courses, 60 learners, 180 enrollments, 108 certificates and 126 audits. Repeated launcher preparation and checked those same counts remained unchanged. Python compileall for scripts and git diff --check passed. These follow-up checks exercise preparation/data separation; the services were not restarted and the full frontend suite/build was not repeated for this launcher-only change.
+
+Database regression command: `python -m pytest backend/tests/test_database.py -q` using backend/.venv. The initial restricted run stalled and was interrupted; rerunning outside that restricted context with local TEMP/TMP completed: 25 passed and 10 subtests passed in 4.80s, no failures or skips.

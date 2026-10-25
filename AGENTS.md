@@ -20,7 +20,7 @@
 - `backend/app/database/`: engine and request-scoped session lifecycle.
 - `frontend/src/pages/`: page composition; `components/`: reusable UI; `api/`: HTTP calls; `types/`: API types.
 - Completed scope: health, demo tenant/course metadata, certificate list/details, synchronous bulk issuance, revocation, filtered CSV export and automated tests. Health is application liveness, not database readiness.
-- `start.bat` delegates to standard-library `scripts/dev.py` for tool/dependency checks, idempotent seed, supervised services and cleanup. Keep startup failures visible; stop only processes owned by that launcher. Do not add external infrastructure or new business features as delivery cleanup.
+- `start.bat` delegates to standard-library `scripts/dev.py` for tool/dependency checks, schema initialization, supervised services and cleanup. Never seed demo records automatically; run `app.database.seed` separately when requested. Keep startup failures visible; stop only processes owned by that launcher. Do not add external infrastructure or new business features as delivery cleanup.
 - Preserve pytest/Vitest tests and real SQLite concurrency evidence. See README.md, TESTING.md and docs/VERIFICATION.md for final delivery instructions/evidence.
 
 ## Engineering rules

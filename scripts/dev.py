@@ -108,8 +108,9 @@ def prepare() -> tuple[str, str]:
     run([npm, "--prefix", str(FRONTEND), "ls", "--depth=0"], capture=True)
     stamp_file.write_text(json.dumps(wanted), encoding="utf-8")
     print("[OK] Frontend dependencies", flush=True)
-    print("[SETUP] Initializing SQLite and seeding demo data (existing records preserved) ...", flush=True)
-    run([str(VENV_PYTHON), "-c", "import sys; sys.path.insert(0, 'backend'); from app.database.seed import seed_database; import json; print(json.dumps(seed_database(), indent=2))"])
+    print("[SETUP] Initializing SQLite tables only (no demo data inserted) ...", flush=True)
+    run([str(VENV_PYTHON), "-c", "import sys; sys.path.insert(0, 'backend'); from app.database.init_db import initialize_database; initialize_database()"])
+    print("[OK] Database schema ready. Run the separate seed command if demo data is needed.", flush=True)
     return node, str(vite)
 
 
@@ -200,7 +201,7 @@ def serve(node: str, vite: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description="Prepare and run the Certificate Admin Console on Windows.")
-    parser.add_argument("--prepare-only", action="store_true", help="Install/check dependencies and seed SQLite, without starting services.")
+    parser.add_argument("--prepare-only", action="store_true", help="Install/check dependencies and initialize empty SQLite tables, without seeding or starting services.")
     args = parser.parse_args()
     try:
         if not args.prepare_only:
